@@ -1,0 +1,253 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Multi-tenant isolation: All core tables include merchantId for data separation
+// Soft-delete pattern: isDeleted flag for audit trail compliance
+// Indexes optimized for common query patterns and performance
+
+model Merchant {
+  id                    String    @id @default(cuid())
+  email                 String    @unique
+  emailVerified         DateTime?
+  passwordHash          String
+  businessName          String
+  displayName           String
+  website               String?
+  country               String?
+  timezone              String    @default("UTC")
+  
+  // Account status - critical for security
+  status                String    @default("active") // active, suspended, deleted
+  isDeleted             Boolean   @default(false)
+  deletedAt             DateTime?
+  
+  // Multi-factor security (Phase 2 ready)
+  totpEnabled           Boolean   @default(false)
+  totpSecret            String?   @db.Text
+  
+  // Account tiers for feature gating
+  tier                  String    @default("starter") // starter, pro, enterprise
+  
+  // Metadata for extensibility
+  metadata              Json      @default("{}")
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  
+  // Relations - cascade delete for cleanup
+  apiKeys               ApiKey[]
+  webhookEndpoints      WebhookEndpoint[]
+  auditLogs             AuditLog[]
+  merchantSettings      MerchantSettings?
+  apiKeyRotations       ApiKeyRotation[]
+  
+  @@index([email])
+  @@index([status])
+  @@index([isDeleted])
+  @@map("merchants")
+}
+
+model ApiKey {
+  id                    String    @id @default(cuid())
+  merchantId            String
+  merchant              Merchant  @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  
+  // Key material - pk_live_xxx and hashed sk_live_xxx
+  publishableKey        String    @unique // pk_live_xxx
+  secretKeyHash         String    @unique // bcrypt hashed
+  secretKeyPrefix       String    // Last 4 chars visible to user
+  name                  String
+  
+  // Security restrictions
+  ipWhitelist           String[]  @default([]) // Optional IP restriction
+  restrictedTo          String[]  @default([]) // Restrict to specific endpoints
+  isActive              Boolean   @default(true)
+  
+  // Usage tracking
+  createdAt             DateTime  @default(now())
+  lastUsedAt            DateTime?
+  expiresAt             DateTime?
+  
+  // Relations
+  rotations             ApiKeyRotation[]
+  
+  @@index([merchantId])
+  @@index([publishableKey])
+  @@map("api_keys")
+}
+
+model ApiKeyRotation {
+  id                    String    @id @default(cuid())
+  apiKeyId              String
+  apiKey                ApiKey    @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+  merchantId            String
+  merchant              Merchant  @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  
+  oldSecretKeyHash      String
+  newSecretKeyHash      String
+  reason                String    // "scheduled", "compromised", "user_initiated"
+  rotatedAt             DateTime  @default(now())
+  
+  @@index([merchantId])
+  @@index([rotatedAt])
+  @@map("api_key_rotations")
+}
+
+model WebhookEndpoint {
+  id                    String    @id @default(cuid())
+  merchantId            String
+  merchant              Merchant  @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  
+  url                   String
+  secret                String    // HMAC-SHA256 key for signature verification
+  events                String[]  @default([]) // ["payment.succeeded", "charge.failed"]
+  
+  // Status tracking for reliability
+  isActive              Boolean   @default(true)
+  failureCount          Int       @default(0)
+  lastFailedAt          DateTime?
+  
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  
+  @@index([merchantId])
+  @@index([isActive])
+  @@map("webhook_endpoints")
+}
+
+model MerchantSettings {
+  id                    String    @id @default(cuid())
+  merchantId            String    @unique
+  merchant              Merchant  @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  
+  // Notification preferences
+  notifyOnPayment       Boolean   @default(true)
+  notifyOnRefund        Boolean   @default(true)
+  payoutSchedule        String    @default("daily") // daily, weekly, monthly
+  webhookRetryCount     Int       @default(3)
+  
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  
+  @@index([merchantId])
+  @@map("merchant_settings")
+}
+
+model AuditLog {
+  id                    String    @id @default(cuid())
+  merchantId            String
+  merchant              Merchant  @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  
+  action                String    // "signin", "signup", "api_key_created", "password_changed", "2fa_enabled"
+  resource              String?   // "api_key", "webhook", "settings"
+  resourceId            String?
+  status                String    // "success", "failure"
+  
+  // Request context for forensic analysis
+  ipAddress             String?
+  userAgent             String?
+  requestId             String    @unique
+  
+  // Structured details for compliance
+  details               Json      @default("{}")
+  createdAt             DateTime  @default(now())
+  
+  @@index([merchantId])
+  @@index([action])
+  @@index([createdAt])
+  @@index([requestId])
+  @@map("audit_logs")
+}
+
+// Phase 2+ placeholder tables for complete Stripe-like functionality
+model Product {
+  id                    String    @id @default(cuid())
+  merchantId            String
+  
+  name                  String
+  description           String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  
+  @@index([merchantId])
+  @@map("products")
+}
+
+model Price {
+  id                    String    @id @default(cuid())
+  merchantId            String
+  productId             String
+  
+  amount                Int       // cents
+  currency              String    @default("usd")
+  type                  String    // "one_time", "recurring"
+  recurringInterval     String?   // "month", "year"
+  createdAt             DateTime  @default(now())
+  
+  @@index([merchantId])
+  @@index([productId])
+  @@map("prices")
+}
+
+model Customer {
+  id                    String    @id @default(cuid())
+  merchantId            String
+  
+  email                 String
+  name                  String?
+  createdAt             DateTime  @default(now())
+  
+  @@index([merchantId])
+  @@index([email])
+  @@map("customers")
+}
+
+model PaymentIntent {
+  id                    String    @id @default(cuid())
+  merchantId            String
+  
+  clientSecret          String    @unique
+  status                String    // "requires_payment_method", "succeeded", "failed"
+  amount                Int       // cents
+  currency              String    @default("usd")
+  createdAt             DateTime  @default(now())
+  
+  @@index([merchantId])
+  @@index([status])
+  @@map("payment_intents")
+}
+
+model Charge {
+  id                    String    @id @default(cuid())
+  merchantId            String
+  
+  amount                Int       // cents
+  status                String    // "succeeded", "failed", "refunded"
+  createdAt             DateTime  @default(now())
+  
+  @@index([merchantId])
+  @@index([status])
+  @@map("charges")
+}
+
+model Subscription {
+  id                    String    @id @default(cuid())
+  merchantId            String
+  
+  status                String    // "active", "cancelled", "past_due"
+  currentPeriodStart    DateTime?
+  currentPeriodEnd      DateTime?
+  createdAt             DateTime  @default(now())
+  
+  @@index([merchantId])
+  @@index([status])
+  @@map("subscriptions")
+}
