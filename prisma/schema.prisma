@@ -48,12 +48,14 @@ model Merchant {
   // Relations - cascade delete for cleanup
   apiKeys               ApiKey[]
   webhookEndpoints      WebhookEndpoint[]
+  webhookEvents         WebhookEvent[]
   auditLogs             AuditLog[]
   merchantSettings      MerchantSettings?
   apiKeyRotations       ApiKeyRotation[]
   paymentIntents        PaymentIntent[]
   charges               Charge[]
   refunds               Refund[]
+  subscriptions         Subscription[]
   
   @@index([email])
   @@index([status])
@@ -124,6 +126,9 @@ model WebhookEndpoint {
   
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
+  
+  // Relations
+  deliveries            WebhookDelivery[]
   
   @@index([merchantId])
   @@index([isActive])
@@ -196,8 +201,14 @@ model Price {
   amount                Int       // cents
   currency              String    @default("usd")
   type                  String    // "one_time", "recurring"
-  recurringInterval     String?   // "month", "year"
+  recurringInterval     String?   // "month", "year", "week", "day"
+  recurringIntervalCount Int?     // e.g., every 3 months
+  trialDays             Int?      // Free trial period
   createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  
+  // Relations
+  subscriptions         Subscription[]
   
   @@index([merchantId])
   @@index([productId])
@@ -213,7 +224,14 @@ model Customer {
   phone                 String?
   address               Json?     // { street, city, state, zip, country }
   cardTokens            String[]  @default([]) // Array of tokenized cards
+  defaultCardLast4      String?
+  defaultCardBrand      String?
+  defaultCardToken      String?
   createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  
+  // Relations
+  subscriptions         Subscription[]
   
   @@index([merchantId])
   @@index([email])
@@ -272,6 +290,9 @@ model Charge {
   paymentIntentId       String
   paymentIntent         PaymentIntent @relation(fields: [paymentIntentId], references: [id], onDelete: Cascade)
   
+  subscriptionId        String?   // NULL for one-time, populated for recurring
+  subscription          Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  
   // Charge details
   amount                Int       // cents
   currency              String    @default("usd")
@@ -314,6 +335,7 @@ model Charge {
   @@index([authorizationStatus])
   @@index([fraudCheckStatus])
   @@index([paymentIntentId])
+  @@index([subscriptionId])
   @@map("charges")
 }
 
@@ -342,13 +364,115 @@ model Refund {
 model Subscription {
   id                    String    @id @default(cuid())
   merchantId            String
+  merchant              Merchant  @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   
-  status                String    // "active", "cancelled", "past_due"
-  currentPeriodStart    DateTime?
-  currentPeriodEnd      DateTime?
+  customerId            String
+  customer              Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  
+  priceId               String
+  price                 Price     @relation(fields: [priceId], references: [id], onDelete: Restrict)
+  
+  // Subscription status
+  status                String    @default("active") // active, paused, cancelled, past_due, incomplete
+  cancelAtPeriodEnd     Boolean   @default(false) // Cancel after current period ends
+  
+  // Billing cycles
+  currentPeriodStart    DateTime
+  currentPeriodEnd      DateTime
+  nextBillingDate       DateTime
+  
+  // Trial period
+  trialStart            DateTime?
+  trialEnd              DateTime?
+  trialDaysLeft         Int?
+  
+  // Pricing
+  quantity              Int       @default(1)
+  
+  // Cancellation
+  cancelledAt           DateTime?
+  cancellationReason    String?   // "customer_request", "payment_failure", "merchant_request"
+  
+  // Retry count for failed charges
+  failureCount          Int       @default(0)
+  lastFailureAt         DateTime?
+  
+  // Metadata
+  metadata              Json      @default("{}")
+  
+  // Timestamps
   createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  
+  // Relations
+  charges               Charge[]
   
   @@index([merchantId])
+  @@index([customerId])
   @@index([status])
+  @@index([nextBillingDate])
+  @@index([currentPeriodEnd])
+  @@unique([merchantId, customerId, priceId])
   @@map("subscriptions")
+}
+
+model WebhookEvent {
+  id                    String    @id @default(cuid())
+  merchantId            String
+  merchant              Merchant  @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  
+  type                  String    // "payment.succeeded", "charge.refunded", "subscription.created", etc.
+  dataObject            Json      // The event payload
+  
+  // Delivery state
+  status                String    @default("pending") // pending, sent, failed, retrying
+  deliveryAttempts      Int       @default(0)
+  lastDeliveryAt        DateTime?
+  nextRetryAt           DateTime?
+  
+  // Error info (if failed)
+  lastError             String?
+  lastErrorCode         String?
+  lastHttpStatus        Int?
+  
+  // Timestamps
+  createdAt             DateTime  @default(now())
+  expiresAt             DateTime  @default(dbgenerated("now() + interval '7 days'"))
+  
+  // Relations
+  deliveries            WebhookDelivery[]
+  
+  @@index([merchantId])
+  @@index([type])
+  @@index([status])
+  @@index([nextRetryAt])
+  @@index([createdAt])
+  @@map("webhook_events")
+}
+
+model WebhookDelivery {
+  id                    String    @id @default(cuid())
+  webhookEndpointId     String
+  webhookEndpoint       WebhookEndpoint @relation(fields: [webhookEndpointId], references: [id], onDelete: Cascade)
+  
+  eventId               String?
+  event                 WebhookEvent? @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  
+  // Request/response
+  requestPayload        Json
+  responseStatus        Int?
+  responsePayload       Json?
+  
+  // Headers (for debugging)
+  headers               Json
+  signature             String    // HMAC signature
+  
+  // Timing
+  duration              Int       // milliseconds
+  createdAt             DateTime  @default(now())
+  
+  @@index([webhookEndpointId])
+  @@index([eventId])
+  @@index([createdAt])
+  @@map("webhook_deliveries")
 }
