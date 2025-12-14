@@ -5,10 +5,8 @@
   Attaches to response headers for support correlation
 */
 
-import { randomUUID } from "crypto"
-
 export function generateRequestId(): string {
-  return randomUUID()
+  return crypto.randomUUID()
 }
 
 export function getRequestIdFromHeaders(headers: Headers): string | null {
