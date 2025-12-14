@@ -21,6 +21,27 @@ import { generateRequestId } from "./request-id"
 import { auditLogger } from "./logger"
 import { z } from "zod"
 
+// Extend NextAuth types to include custom fields
+declare module "next-auth" {
+  interface User {
+    merchantId?: string
+    tier?: string
+    role?: string
+    businessName?: string
+    displayName?: string
+  }
+}
+
+declare module "next-auth/jwt" {
+  interface JWT {
+    merchantId?: string
+    tier?: string
+    role?: string
+    businessName?: string
+    displayName?: string
+  }
+}
+
 // Input validation schemas
 const loginSchema = z.object({
   email: z.string().email("Invalid email format"),
@@ -47,7 +68,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
   pages: {
     signIn: "/auth/signin",
-    signUp: "/auth/signup",
     error: "/auth/error",
   },
   providers: [
@@ -68,11 +88,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           // Check rate limiting
           const rateLimitCheck = await checkRateLimit(email)
           if (rateLimitCheck.isLocked) {
-            await auditLogger.log("signin_failed", "rate_limit", {
-              email,
-              reason: "Account locked",
-              remainingTime: rateLimitCheck.remainingTime,
+            await auditLogger.log("signin_failed", "auth", "system", {
+              status: "failure",
               requestId,
+              details: {
+                email,
+                reason: "Account locked",
+                remainingTime: rateLimitCheck.remainingTime,
+              },
             })
             return null
           }
@@ -86,20 +109,25 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           // Check if merchant exists and is active
           if (!merchant || merchant.isDeleted) {
             await recordFailedAttempt(email)
-            await auditLogger.log("signin_failed", "merchant_not_found", {
-              email,
-              reason: "Invalid credentials",
+            await auditLogger.log("signin_failed", "auth", "system", {
+              status: "failure",
               requestId,
+              details: {
+                email,
+                reason: "Invalid credentials",
+              },
             })
             return null
           }
 
           if (merchant.status !== "active") {
-            await auditLogger.log("signin_failed", "merchant_suspended", {
-              merchantId: merchant.id,
-              email,
-              reason: `Account status: ${merchant.status}`,
+            await auditLogger.log("signin_failed", "merchant", merchant.id, {
+              status: "failure",
               requestId,
+              details: {
+                email,
+                reason: `Account status: ${merchant.status}`,
+              },
             })
             return null
           }
@@ -110,10 +138,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           
           if (!isValidPassword) {
             await recordFailedAttempt(email)
-            await auditLogger.log("signin_failed", "invalid_password", {
-              merchantId: merchant.id,
-              email,
+            await auditLogger.log("signin_failed", "merchant", merchant.id, {
+              status: "failure",
               requestId,
+              details: {
+                email,
+                reason: "Invalid password",
+              },
             })
             return null
           }
@@ -136,11 +167,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
           return user
         } catch (error) {
-          await auditLogger.log("signin_failed", "error", {
-            email: credentials?.email,
-            reason: "Authentication error",
+          await auditLogger.log("signin_failed", "auth", "system", {
+            status: "failure",
             requestId,
-            details: { error: error instanceof Error ? error.message : "Unknown error" },
+            details: {
+              email: credentials?.email,
+              reason: "Authentication error",
+              error: error instanceof Error ? error.message : "Unknown error",
+            },
           })
           return null
         }
