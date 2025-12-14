@@ -23,18 +23,22 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   try {
-    const merchantId = req.headers.get('x-merchant-id');
+    let merchantId = req.headers.get('x-merchant-id');
+    const clientSecret = req.headers.get('x-client-secret');
 
+    // If no merchant ID from auth header, we must have client_secret
     if (!merchantId) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+      if (!clientSecret) {
+        return NextResponse.json(
+          { error: 'Unauthorized' },
+          { status: 401 }
+        );
+      }
     }
 
     // Parse request body
     const body = await req.json();
-    const { cardToken, cardNumber, clientSecret } = confirmPaymentIntentSchema.parse(body);
+    const { cardToken, cardNumber, clientSecret: bodyClientSecret } = confirmPaymentIntentSchema.parse(body);
 
     // Load PaymentIntent
     const paymentIntent = await prisma.paymentIntent.findUnique({
@@ -49,18 +53,33 @@ export async function POST(
       );
     }
 
+    // Use either header or body client secret
+    const secretToVerify = clientSecret || bodyClientSecret;
+    
+    if (!secretToVerify) {
+      return NextResponse.json(
+        { error: 'Client secret required' },
+        { status: 400 }
+      );
+    }
+
+    // Verify client secret (always required)
+    if (secretToVerify !== paymentIntent.clientSecret) {
+      return NextResponse.json(
+        { error: 'Invalid client secret' },
+        { status: 400 }
+      );
+    }
+
+    // Set merchantId from payment intent if not already set
+    if (!merchantId) {
+      merchantId = paymentIntent.merchantId;
+    }
+
     if (paymentIntent.merchantId !== merchantId) {
       return NextResponse.json(
         { error: 'PaymentIntent does not belong to this merchant' },
         { status: 403 }
-      );
-    }
-
-    // Verify client secret if provided (CSRF protection)
-    if (clientSecret && clientSecret !== paymentIntent.clientSecret) {
-      return NextResponse.json(
-        { error: 'Invalid client secret' },
-        { status: 400 }
       );
     }
 
@@ -142,7 +161,7 @@ export async function POST(
           authorizationStatus: authResult.status,
           failureCode: authResult.declineReason,
           failureMessage: getFailureMessage(authResult.declineReason || 'card_declined'),
-          metadata: paymentIntent.metadata,
+          metadata: paymentIntent.metadata as any,
           receiptEmail: paymentIntent.receiptEmail,
         },
       });
@@ -238,7 +257,7 @@ export async function POST(
         fraudScore: fraudCheck.score,
         authorizationStatus: 'approved',
         authorizationCode: authResult.authorizationCode,
-        metadata: paymentIntent.metadata,
+        metadata: paymentIntent.metadata as any,
         receiptEmail: paymentIntent.receiptEmail,
       },
     });

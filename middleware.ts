@@ -24,13 +24,42 @@ const PUBLIC_PATHS_ONLY = [
   "/auth/signup",
 ]
 
+// Define public routes that anyone can access
+const PUBLIC_PATHS = [
+  "/checkout",
+]
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
   const requestId = request.headers.get("x-request-id") || crypto.randomUUID()
   
   // Handle API key authentication for payment endpoints
-  if (pathname.startsWith("/api/payment-intents") || pathname.startsWith("/api/charges")) {
+  // Allow client_secret-based auth as fallback for checkout pages
+  if (
+    pathname.startsWith("/api/payment-intents") ||
+    pathname.startsWith("/api/charges")
+  ) {
+    const clientSecret = request.headers.get("x-client-secret") || 
+                         new URL(request.url).searchParams.get("client_secret");
+    
+    // If client_secret is provided and this is a public checkout route, allow it
+    if (clientSecret && (pathname.includes("/confirm") || pathname.includes("/verify-3ds") || pathname === "/api/payment-intents")) {
+      // Extract merchantId from client_secret format: pi_xxx_secret_yyy
+      const response = NextResponse.next()
+      response.headers.set("x-request-id", requestId)
+      // For client_secret auth, we'll verify it in the endpoint itself
+      return response
+    }
+    
     return await handleApiKeyAuth(request, requestId)
+  }
+
+  // /api/tokenize can be called from the frontend without explicit auth header
+  // It's a public endpoint for card tokenization
+  if (pathname === "/api/tokenize") {
+    const response = NextResponse.next()
+    response.headers.set("x-request-id", requestId)
+    return response
   }
   
   // Add request ID to all responses
