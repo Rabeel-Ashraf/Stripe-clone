@@ -14,7 +14,8 @@ This is a **foundational authentication and database layer** that provides:
 - NextAuth.js v5 authentication
 - Production-ready patterns and architecture
 
-This is **Phase 1** - the foundation for building a complete Stripe-like payment system in subsequent phases.
+**Phase 1** (Complete): Foundation - Authentication, API keys, and database schema
+**Phase 2** (Complete): Payment Processing - Card tokenization, fraud detection, and charge processing
 
 ## 🏗️ Architecture
 
@@ -73,6 +74,16 @@ graph TB
 - **Structured logging** for monitoring
 - **Audit trail** for compliance (7-year retention ready)
 
+### 💳 Payment Processing (Phase 2)
+- **Card tokenization** - Simulated secure card storage (never stores raw PAN)
+- **Luhn validation** - Card number checksum validation
+- **Fraud detection engine** - Multi-rule risk scoring system
+- **Authorization simulation** - Bank authorization with test cards
+- **3D Secure support** - SCA compliance for high-risk transactions
+- **Refund processing** - Full and partial refund capabilities
+- **Webhook system** - HMAC-signed event delivery
+- **PaymentIntent flow** - Modern payment confirmation pattern
+
 ## 🚀 Quick Start
 
 ```bash
@@ -106,10 +117,10 @@ Visit http://localhost:3000 and use test accounts:
 | Document | Description |
 |----------|-------------|
 | [SETUP.md](./SETUP.md) | Complete setup and installation guide |
-| [AUTH_FLOW.md](./AUTH_FLOW.md) | Authentication flow and JWT architecture |
-| [API_KEYS.md](./API_KEYS.md) | API key management and security |
+| [API.md](./API.md) | Payment API endpoints and reference |
+| [FRAUD_RULES.md](./FRAUD_RULES.md) | Fraud detection rules and scoring |
+| [FAKE_CARDS.md](./FAKE_CARDS.md) | Test card numbers for development |
 | [SECURITY.md](./SECURITY.md) | Security considerations and production checklist |
-| [CONTRIBUTING.md](./CONTRIBUTING.md) | Development guidelines and workflows |
 
 ## 🧪 Testing
 
@@ -131,6 +142,10 @@ Test coverage includes:
 - Rate limiting logic
 - Database operations
 - Security middleware
+- Card tokenization and validation
+- Fraud detection rules
+- Payment authorization
+- Refund processing
 
 ## 🔧 API Key Management
 

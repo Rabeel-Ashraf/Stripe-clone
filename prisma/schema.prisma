@@ -48,6 +48,9 @@ model Merchant {
   auditLogs             AuditLog[]
   merchantSettings      MerchantSettings?
   apiKeyRotations       ApiKeyRotation[]
+  paymentIntents        PaymentIntent[]
+  charges               Charge[]
+  refunds               Refund[]
   
   @@index([email])
   @@index([status])
@@ -203,6 +206,9 @@ model Customer {
   
   email                 String
   name                  String?
+  phone                 String?
+  address               Json?     // { street, city, state, zip, country }
+  cardTokens            String[]  @default([]) // Array of tokenized cards
   createdAt             DateTime  @default(now())
   
   @@index([merchantId])
@@ -213,29 +219,120 @@ model Customer {
 model PaymentIntent {
   id                    String    @id @default(cuid())
   merchantId            String
+  merchant              Merchant  @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   
   clientSecret          String    @unique
-  status                String    // "requires_payment_method", "succeeded", "failed"
+  publishableKey        String    // Which publishable key created this
+  
+  // Payment details
   amount                Int       // cents
   currency              String    @default("usd")
+  status                String    // "requires_payment_method", "requires_confirmation", "succeeded", "processing", "requires_action", "canceled"
+  
+  // Card & customer info
+  customerId            String?   // For linking to customer
+  cardToken             String?   // Tokenized card (simulated UUID)
+  cardLast4             String?
+  cardBrand             String?   // visa, mastercard, amex
+  cardExpMonth          Int?
+  cardExpYear           Int?
+  
+  // 3D Secure
+  requires3ds           Boolean   @default(false)
+  threeDSecureStatus    String?   // "authenticated", "failed"
+  
+  // Metadata
+  metadata              Json      @default("{}")
+  description           String?
+  receiptEmail          String?
+  
+  // Timestamps
   createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  
+  // Relations
+  charges               Charge[]
   
   @@index([merchantId])
   @@index([status])
+  @@index([clientSecret])
+  @@index([publishableKey])
   @@map("payment_intents")
 }
 
 model Charge {
   id                    String    @id @default(cuid())
   merchantId            String
+  merchant              Merchant  @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   
+  paymentIntentId       String
+  paymentIntent         PaymentIntent @relation(fields: [paymentIntentId], references: [id], onDelete: Cascade)
+  
+  // Charge details
   amount                Int       // cents
-  status                String    // "succeeded", "failed", "refunded"
+  currency              String    @default("usd")
+  status                String    // "succeeded", "failed", "pending", "refunded"
+  
+  // Card info
+  cardLast4             String
+  cardBrand             String
+  cardToken             String    // Tokenized
+  
+  // Fraud & authorization
+  fraudCheckStatus      String?   // "passed", "flagged", "high_risk"
+  fraudScore            Float     @default(0.0) // 0-100
+  authorizationStatus   String    // "approved", "declined", "error"
+  authorizationCode     String?
+  
+  // Reason for failure (if any)
+  failureCode           String?   // "card_declined", "expired_card", "insufficient_funds", "lost_card", etc.
+  failureMessage        String?
+  
+  // Refund info
+  amountRefunded        Int       @default(0)
+  isRefunded            Boolean   @default(false)
+  refundedAt            DateTime?
+  
+  // Metadata
+  metadata              Json      @default("{}")
+  receiptUrl            String?
+  receiptEmail          String?
+  
+  // Timestamps
   createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  
+  // Relations
+  refunds               Refund[]
   
   @@index([merchantId])
   @@index([status])
+  @@index([authorizationStatus])
+  @@index([fraudCheckStatus])
+  @@index([paymentIntentId])
   @@map("charges")
+}
+
+model Refund {
+  id                    String    @id @default(cuid())
+  merchantId            String
+  merchant              Merchant  @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  
+  chargeId              String
+  charge                Charge    @relation(fields: [chargeId], references: [id], onDelete: Cascade)
+  
+  amount                Int       // cents
+  currency              String    @default("usd")
+  status                String    // "pending", "succeeded", "failed"
+  reason                String?   // "requested_by_customer", "duplicate", "fraudulent"
+  
+  metadata              Json      @default("{}")
+  createdAt             DateTime  @default(now())
+  
+  @@index([merchantId])
+  @@index([chargeId])
+  @@index([status])
+  @@map("refunds")
 }
 
 model Subscription {
