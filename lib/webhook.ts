@@ -64,6 +64,57 @@ export async function fireWebhook(
 }
 
 /**
+ * Queue webhook event to database for later delivery (used by subscriptions)
+ * Alias for fireWebhook to maintain compatibility
+ */
+export async function queueWebhookEvent(
+  merchantId: string,
+  eventType: string,
+  data: any
+): Promise<void> {
+  return fireWebhook(merchantId, eventType, data);
+}
+
+/**
+ * Deliver a webhook event immediately (used for testing webhooks)
+ * @param endpointId - The webhook endpoint ID
+ * @param eventType - Type of event (e.g., "payment.succeeded")
+ * @param data - Event data payload
+ */
+export async function deliverWebhookEvent(
+  endpointId: string,
+  eventType: string,
+  data: any
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const endpoint = await prisma.webhookEndpoint.findUnique({
+      where: { id: endpointId },
+    });
+
+    if (!endpoint) {
+      return { success: false, error: 'Webhook endpoint not found' };
+    }
+
+    const event: WebhookEvent = {
+      id: `evt_${nanoid(24)}`,
+      type: eventType,
+      created: Math.floor(Date.now() / 1000),
+      data: {
+        object: data,
+      },
+    };
+
+    await deliverWebhook(endpoint, event);
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
+/**
  * Delivers a webhook event to a specific endpoint
  */
 async function deliverWebhook(
