@@ -6,7 +6,6 @@
 */
 
 import { prisma } from "./prisma"
-import crypto from "crypto"
 
 // In-memory rate limit store (use Redis in production)
 const rateLimitStore = new Map<string, { count: number; resetTime: number; lockedUntil?: number }>()
@@ -22,8 +21,12 @@ const MAX_ATTEMPTS = parseInt(process.env.RATE_LIMIT_ATTEMPTS || "5")
 const WINDOW_MS = parseInt(process.env.RATE_LIMIT_WINDOW_MS || "900000") // 15 minutes
 const LOCK_MULTIPLIER = 5 // Each lock adds 5 more minutes
 
-export function generateRateLimitKey(identifier: string): string {
-  return crypto.createHash("sha256").update(identifier).digest("hex")
+export async function generateRateLimitKey(identifier: string): Promise<string> {
+  const encoder = new TextEncoder()
+  const data = encoder.encode(identifier)
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data)
+  const hashArray = Array.from(new Uint8Array(hashBuffer))
+  return hashArray.map(b => b.toString(16).padStart(2, "0")).join("")
 }
 
 export function getRemainingTime(resetTime: number): number {
@@ -32,7 +35,7 @@ export function getRemainingTime(resetTime: number): number {
 }
 
 export async function checkRateLimit(identifier: string): Promise<RateLimitStatus> {
-  const key = generateRateLimitKey(identifier.toLowerCase())
+  const key = await generateRateLimitKey(identifier.toLowerCase())
   const record = rateLimitStore.get(key)
   
   const now = Date.now()
@@ -87,7 +90,7 @@ export async function checkRateLimit(identifier: string): Promise<RateLimitStatu
 }
 
 export async function recordFailedAttempt(identifier: string): Promise<void> {
-  const key = generateRateLimitKey(identifier.toLowerCase())
+  const key = await generateRateLimitKey(identifier.toLowerCase())
   const now = Date.now()
   
   const record = rateLimitStore.get(key)
@@ -127,7 +130,7 @@ export async function recordFailedAttempt(identifier: string): Promise<void> {
 }
 
 export async function clearRateLimit(identifier: string): Promise<void> {
-  const key = generateRateLimitKey(identifier.toLowerCase())
+  const key = await generateRateLimitKey(identifier.toLowerCase())
   rateLimitStore.delete(key)
 }
 

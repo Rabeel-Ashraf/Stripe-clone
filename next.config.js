@@ -1,8 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: {
-    appDir: true,
-  },
   typescript: {
     ignoreBuildErrors: false,
   },
@@ -32,16 +29,6 @@ const nextConfig = {
             value: 'strict-origin-when-cross-origin',
           },
         ],
-      },
-    ]
-  },
-  // Redirect HTTP to HTTPS in production
-  async redirects() {
-    return [
-      {
-        source: '/http://:path*',
-        destination: 'https://:path*',
-        permanent: true,
       },
     ]
   },
