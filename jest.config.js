@@ -14,7 +14,6 @@ const config = {
     '^@/components/(.*)$': '<rootDir>/components/$1',
     '^@/lib/(.*)$': '<rootDir>/lib/$1',
     '^@/types/(.*)$': '<rootDir>/types/$1',
-    'nanoid': require.resolve('nanoid'),
   },
   testEnvironment: 'node',
   testPathIgnorePatterns: [
@@ -22,7 +21,7 @@ const config = {
     '<rootDir>/node_modules/',
   ],
   transformIgnorePatterns: [
-    'node_modules/(?!(nanoid)/)',
+    'node_modules/(?!(nanoid|uuid)/)',
   ],
   // Indicates whether the coverage information should be collected while executing the test
   collectCoverage: false,

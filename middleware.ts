@@ -29,7 +29,10 @@ export async function middleware(request: NextRequest) {
   const requestId = request.headers.get("x-request-id") || crypto.randomUUID()
   
   // Handle API key authentication for payment endpoints
-  if (pathname.startsWith("/api/payment-intents") || pathname.startsWith("/api/charges")) {
+  if (pathname.startsWith("/api/payment-intents") || 
+      pathname.startsWith("/api/charges") ||
+      pathname.startsWith("/api/subscriptions") ||
+      pathname.startsWith("/api/webhook-endpoints")) {
     return await handleApiKeyAuth(request, requestId)
   }
   
