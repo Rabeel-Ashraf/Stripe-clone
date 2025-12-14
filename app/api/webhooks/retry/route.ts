@@ -29,7 +29,23 @@ export async function POST(req: NextRequest) {
 
     for (const event of retryableEvents) {
       try {
-        await deliverWebhookEvent(event.id);
+        // Get webhook endpoints for this merchant that match event type
+        const endpoints = await prisma.webhookEndpoint.findMany({
+          where: {
+            merchantId: event.merchantId,
+            isActive: true,
+            events: {
+              has: event.type,
+            },
+          },
+        });
+
+        // Retry delivery to each endpoint
+        for (const endpoint of endpoints) {
+          const data = typeof event.dataObject === 'object' ? event.dataObject : {};
+          await deliverWebhookEvent(endpoint.id, event.type, data);
+        }
+        
         successCount++;
       } catch (err) {
         logger.error('[Webhook Retry] Error retrying event', {

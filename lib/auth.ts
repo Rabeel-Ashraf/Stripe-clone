@@ -24,21 +24,18 @@ import { z } from "zod"
 // Extend NextAuth types to include custom fields
 declare module "next-auth" {
   interface User {
-    merchantId?: string
-    tier?: string
-    role?: string
-    businessName?: string
-    displayName?: string
+    merchantId: string
+    tier: string
+    role: string
+    businessName: string
+    displayName: string
   }
-}
-
-declare module "next-auth/jwt" {
-  interface JWT {
-    merchantId?: string
-    tier?: string
-    role?: string
-    businessName?: string
-    displayName?: string
+  
+  interface Session {
+    user: User & {
+      id: string
+      email: string
+    }
   }
 }
 
