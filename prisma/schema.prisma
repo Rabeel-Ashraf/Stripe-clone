@@ -37,6 +37,9 @@ model Merchant {
   // Account tiers for feature gating
   tier                  String    @default("starter") // starter, pro, enterprise
   
+  // Role-based access control
+  role                  String    @default("merchant") // merchant, admin
+  
   // Metadata for extensibility
   metadata              Json      @default("{}")
   createdAt             DateTime  @default(now())
@@ -54,6 +57,7 @@ model Merchant {
   
   @@index([email])
   @@index([status])
+  @@index([role])
   @@index([isDeleted])
   @@map("merchants")
 }

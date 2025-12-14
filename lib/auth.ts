@@ -124,6 +124,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             email: merchant.email,
             merchantId: merchant.id,
             tier: merchant.tier,
+            role: merchant.role,
             businessName: merchant.businessName,
             displayName: merchant.displayName,
           }
@@ -153,6 +154,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // Add merchant-specific data to JWT
         token.merchantId = user.merchantId
         token.tier = user.tier
+        token.role = user.role
         token.businessName = user.businessName
         token.displayName = user.displayName
       }
@@ -165,6 +167,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.id = token.sub as string
         session.user.merchantId = token.merchantId as string
         session.user.tier = token.tier as string
+        session.user.role = token.role as string
         session.user.businessName = token.businessName as string
         session.user.displayName = token.displayName as string
       }
@@ -188,6 +191,7 @@ export type SessionUser = {
   email: string
   merchantId: string
   tier: string
+  role: string
   businessName: string
   displayName: string
 }
