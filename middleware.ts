@@ -9,6 +9,7 @@ import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import bcrypt from "bcryptjs"
 
 // Define protected routes
 const PROTECTED_PATHS = [
@@ -26,6 +27,11 @@ const PUBLIC_PATHS_ONLY = [
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
   const requestId = request.headers.get("x-request-id") || crypto.randomUUID()
+  
+  // Handle API key authentication for payment endpoints
+  if (pathname.startsWith("/api/payment-intents") || pathname.startsWith("/api/charges")) {
+    return await handleApiKeyAuth(request, requestId)
+  }
   
   // Add request ID to all responses
   const response = NextResponse.next()
@@ -103,6 +109,157 @@ export async function middleware(request: NextRequest) {
   }
   
   return response
+}
+
+async function handleApiKeyAuth(request: NextRequest, requestId: string) {
+  // Extract API key from Authorization header
+  const authHeader = request.headers.get("authorization")
+  const apiKey = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null
+  
+  if (!apiKey) {
+    return NextResponse.json(
+      { error: "Missing API key. Include 'Authorization: Bearer sk_live_xxx' header." },
+      { status: 401, headers: { "x-request-id": requestId } }
+    )
+  }
+  
+  // Validate API key format
+  if (!apiKey.startsWith("sk_live_") && !apiKey.startsWith("pk_live_")) {
+    return NextResponse.json(
+      { error: "Invalid API key format" },
+      { status: 401, headers: { "x-request-id": requestId } }
+    )
+  }
+  
+  try {
+    // For secret keys (sk_live_*)
+    if (apiKey.startsWith("sk_live_")) {
+      const secretKeyPrefix = apiKey.slice(-4)
+      
+      // Find API key by prefix
+      const apiKeyRecord = await prisma.apiKey.findFirst({
+        where: {
+          secretKeyPrefix,
+          isActive: true,
+        },
+        include: {
+          merchant: {
+            select: {
+              id: true,
+              status: true,
+              isDeleted: true,
+            },
+          },
+        },
+      })
+      
+      if (!apiKeyRecord) {
+        return NextResponse.json(
+          { error: "Invalid API key" },
+          { status: 401, headers: { "x-request-id": requestId } }
+        )
+      }
+      
+      // Verify hash
+      const isValid = await bcrypt.compare(apiKey, apiKeyRecord.secretKeyHash)
+      if (!isValid) {
+        return NextResponse.json(
+          { error: "Invalid API key" },
+          { status: 401, headers: { "x-request-id": requestId } }
+        )
+      }
+      
+      // Check merchant status
+      if (apiKeyRecord.merchant.isDeleted || apiKeyRecord.merchant.status !== "active") {
+        return NextResponse.json(
+          { error: "Merchant account is not active" },
+          { status: 403, headers: { "x-request-id": requestId } }
+        )
+      }
+      
+      // Check expiration
+      if (apiKeyRecord.expiresAt && new Date() > apiKeyRecord.expiresAt) {
+        return NextResponse.json(
+          { error: "API key has expired" },
+          { status: 401, headers: { "x-request-id": requestId } }
+        )
+      }
+      
+      // Update last used timestamp
+      await prisma.apiKey.update({
+        where: { id: apiKeyRecord.id },
+        data: { lastUsedAt: new Date() },
+      })
+      
+      // Add merchant context to request headers
+      const response = NextResponse.next()
+      response.headers.set("x-request-id", requestId)
+      response.headers.set("x-merchant-id", apiKeyRecord.merchantId)
+      response.headers.set("x-publishable-key", apiKeyRecord.publishableKey)
+      
+      return response
+    }
+    
+    // For publishable keys (pk_live_*) - limited access
+    if (apiKey.startsWith("pk_live_")) {
+      const apiKeyRecord = await prisma.apiKey.findFirst({
+        where: {
+          publishableKey: apiKey,
+          isActive: true,
+        },
+        include: {
+          merchant: {
+            select: {
+              id: true,
+              status: true,
+              isDeleted: true,
+            },
+          },
+        },
+      })
+      
+      if (!apiKeyRecord) {
+        return NextResponse.json(
+          { error: "Invalid publishable key" },
+          { status: 401, headers: { "x-request-id": requestId } }
+        )
+      }
+      
+      // Check merchant status
+      if (apiKeyRecord.merchant.isDeleted || apiKeyRecord.merchant.status !== "active") {
+        return NextResponse.json(
+          { error: "Merchant account is not active" },
+          { status: 403, headers: { "x-request-id": requestId } }
+        )
+      }
+      
+      // Publishable keys can only create payment intents, not list/retrieve
+      const { pathname } = request.nextUrl
+      if (request.method === "POST" && pathname === "/api/payment-intents") {
+        const response = NextResponse.next()
+        response.headers.set("x-request-id", requestId)
+        response.headers.set("x-merchant-id", apiKeyRecord.merchantId)
+        response.headers.set("x-publishable-key", apiKeyRecord.publishableKey)
+        return response
+      }
+      
+      return NextResponse.json(
+        { error: "This endpoint requires a secret key" },
+        { status: 403, headers: { "x-request-id": requestId } }
+      )
+    }
+  } catch (error) {
+    console.error("API key authentication error:", error)
+    return NextResponse.json(
+      { error: "Authentication error" },
+      { status: 500, headers: { "x-request-id": requestId } }
+    )
+  }
+  
+  return NextResponse.json(
+    { error: "Invalid API key" },
+    { status: 401, headers: { "x-request-id": requestId } }
+  )
 }
 
 export const config = {

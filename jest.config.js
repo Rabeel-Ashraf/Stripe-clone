@@ -9,23 +9,23 @@ const createJestConfig = nextJest({
 const config = {
   // Add more setup options before each test is run
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
-  moduleNameMapping: {
+  moduleNameMapper: {
     // Handle module aliases (this will match tsconfig.json paths)
     '^@/components/(.*)$': '<rootDir>/components/$1',
     '^@/lib/(.*)$': '<rootDir>/lib/$1',
     '^@/types/(.*)$': '<rootDir>/types/$1',
+    'nanoid': require.resolve('nanoid'),
   },
-  testEnvironment: 'jest-environment-jsdom',
+  testEnvironment: 'node',
   testPathIgnorePatterns: [
     '<rootDir>/.next/',
     '<rootDir>/node_modules/',
   ],
   transformIgnorePatterns: [
-    '/node_modules/',
-    '^.+\\.module\\.(css|sass|scss)$',
+    'node_modules/(?!(nanoid)/)',
   ],
   // Indicates whether the coverage information should be collected while executing the test
-  collectCoverage: true,
+  collectCoverage: false,
   // An array of glob patterns indicating a set of files for which coverage information should be collected
   collectCoverageFrom: [
     'lib/**/*.{js,jsx,ts,tsx}',
