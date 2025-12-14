@@ -38,7 +38,9 @@ export async function middleware(request: NextRequest) {
   // Allow client_secret-based auth as fallback for checkout pages
   if (
     pathname.startsWith("/api/payment-intents") ||
-    pathname.startsWith("/api/charges")
+    pathname.startsWith("/api/charges") ||
+    pathname.startsWith("/api/subscriptions") ||
+    pathname.startsWith("/api/webhook-endpoints")
   ) {
     const clientSecret = request.headers.get("x-client-secret") || 
                          new URL(request.url).searchParams.get("client_secret");
