@@ -31,6 +31,18 @@ async function main() {
   // Define test merchants
   const merchants = [
     {
+      email: "admin@stripe-clone.test",
+      password: "Admin1234!",
+      businessName: "Admin Account",
+      displayName: "Administrator",
+      website: "https://admin.stripe-clone.test",
+      country: "US",
+      timezone: "America/New_York",
+      tier: "enterprise" as const,
+      status: "active" as const,
+      role: "admin" as const,
+    },
+    {
       email: "demo@stripe-clone.test",
       password: "Demo1234!",
       businessName: "Acme Corporation",
@@ -40,6 +52,7 @@ async function main() {
       timezone: "America/New_York",
       tier: "starter" as const,
       status: "active" as const,
+      role: "merchant" as const,
     },
     {
       email: "pro@stripe-clone.test",
@@ -51,6 +64,7 @@ async function main() {
       timezone: "America/Los_Angeles",
       tier: "pro" as const,
       status: "active" as const,
+      role: "merchant" as const,
     },
     {
       email: "enterprise@stripe-clone.test",
@@ -62,6 +76,7 @@ async function main() {
       timezone: "Europe/London",
       tier: "enterprise" as const,
       status: "active" as const,
+      role: "merchant" as const,
     },
   ]
 
@@ -86,6 +101,7 @@ async function main() {
           timezone: merchantData.timezone,
           tier: merchantData.tier,
           status: merchantData.status,
+          role: merchantData.role,
         },
       })
 
@@ -179,6 +195,11 @@ async function main() {
 
   console.log("\n🎉 Database seeding completed successfully!")
   console.log("\n📋 Test Accounts:")
+  console.log("ADMIN Account:")
+  console.log("   Email: admin@stripe-clone.test")
+  console.log("   Password: Admin1234!")
+  console.log("   Business: Admin Account")
+  console.log("")
   console.log("1. Starter Account:")
   console.log("   Email: demo@stripe-clone.test")
   console.log("   Password: Demo1234!")

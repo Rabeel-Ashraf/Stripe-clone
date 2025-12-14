@@ -14,6 +14,7 @@ import bcrypt from "bcryptjs"
 // Define protected routes
 const PROTECTED_PATHS = [
   "/dashboard",
+  "/admin",
   "/api/auth", // Allow auth endpoints
   "/api/auth/signout", // Allow logout
 ]
@@ -111,12 +112,12 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(dashboardUrl)
   }
   
-  // Check merchant status for authenticated users
+  // Check merchant status and admin role for protected routes
   if (session?.user?.merchantId) {
     try {
       const merchant = await prisma.merchant.findUnique({
         where: { id: session.user.merchantId },
-        select: { status: true, isDeleted: true }
+        select: { status: true, isDeleted: true, role: true }
       })
       
       // Redirect suspended or deleted merchants to error page
@@ -124,6 +125,12 @@ export async function middleware(request: NextRequest) {
         const errorUrl = new URL("/auth/error", request.url)
         errorUrl.searchParams.set("error", "account_suspended")
         return NextResponse.redirect(errorUrl)
+      }
+      
+      // Check admin role for admin routes
+      if (pathname.startsWith("/admin") && merchant.role !== "admin") {
+        const dashboardUrl = new URL("/dashboard", request.url)
+        return NextResponse.redirect(dashboardUrl)
       }
     } catch (error) {
       console.error("Error checking merchant status:", error)
